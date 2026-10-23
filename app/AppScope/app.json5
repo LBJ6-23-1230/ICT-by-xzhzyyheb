@@ -1,7 +1,7 @@
 {
   "app": {
     "bundleName": "com.zhixue.mate",
-    "vendor": "C4-AI",
+    "vendor": "ZhixueMate",
     "versionCode": 1000000,
     "versionName": "1.0.0",
     "buildVersion": "1",

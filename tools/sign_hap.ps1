@@ -7,12 +7,20 @@
 # 用法：在 PowerShell 里运行本脚本，按提示输入 p12 密码。
 # 密码用交互模式输入，不会写进命令行历史、也不会留在脚本里。
 
+param(
+    [string]$DevEcoHome = 'D:\DevEco\DevEco Studio',
+    [string]$SigningDirectory = 'E:\zhixue-signing',
+    [string]$InputHap = '',
+    [string]$OutputHap = ''
+)
+
 $ErrorActionPreference = 'Stop'
 
-$java   = 'D:\DevEco\DevEco Studio\jbr\bin\java.exe'
-$tool   = 'D:\DevEco\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$java = Join-Path $DevEcoHome 'jbr\bin\java.exe'
+$tool = Join-Path $DevEcoHome 'sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar'
 
-$signDir = 'E:\zhixue-signing'
+$signDir = $SigningDirectory
 $keystore = Join-Path $signDir 'zhixue-debug.p12'
 $appCert  = Join-Path $signDir 'zhixue-release.cer'
 # ⚠️ AGC 下载下来的 profile 文件名是 `zhixue-release-profileRelease.p7b`（长名），
@@ -25,9 +33,13 @@ $profile = @(
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $profile) { $profile = Join-Path $signDir 'zhixue-release-profileRelease.p7b' }
 
-$inHap  = 'E:\C4-liantiao\liantiao5\app\entry\build\default\outputs\default\entry-default-unsigned.hap'
-$outDir = 'E:\C4-liantiao\liantiao5\app\entry\build\default\outputs\default'
-$outHap = Join-Path $outDir 'entry-default-signed.hap'
+$inHap = if ($InputHap) { $InputHap } else {
+    Join-Path $projectRoot 'app\entry\build\default\outputs\default\entry-default-unsigned.hap'
+}
+$outDir = Split-Path -Parent $inHap
+$outHap = if ($OutputHap) { $OutputHap } else {
+    Join-Path $outDir 'entry-default-signed.hap'
+}
 
 Write-Host '=== 输入文件检查 ===' -ForegroundColor Cyan
 foreach ($f in @($java, $tool, $keystore, $appCert, $profile, $inHap)) {

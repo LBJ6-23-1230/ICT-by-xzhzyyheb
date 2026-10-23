@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { FileBlob, SpreadsheetFile, Workbook } = require('@oai/artifact-tool');
 
-const outputDir = path.resolve('02-演示视频', '测试素材', '搭子匹配');
+const outputDir = path.resolve('演示测试数据', '搭子匹配');
 const fontFamily = 'Arial';
 
 const accountA = [

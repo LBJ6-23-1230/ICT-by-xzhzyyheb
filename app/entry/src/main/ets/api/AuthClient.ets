@@ -361,7 +361,7 @@ export class AuthClient {
   }
 
   /**
-   * 华为账号一键登录（鸿蒙赛道最对口的登录方式）。
+   * 华为账号一键登录。
    *
    * 走 `@kit.AccountKit` 的 `authentication` 模块拿到华为账号的 OpenID，
    * 再交给本服务换取自己的 token。免注册、免验证码。

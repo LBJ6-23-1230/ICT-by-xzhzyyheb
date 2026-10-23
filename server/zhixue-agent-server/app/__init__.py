@@ -99,8 +99,8 @@ def _report_repository_state(path: Path, repository) -> None:
     """启动时把「账号库在哪个文件、里面有多少账号」打到控制台。
 
     为什么需要：`data/repository.json` 是**运行期状态** —— 它既在 `.gitignore` 里
-    （第 23 行），也在交付打包的排除表里（`tools/build_submission_zip.py` 的
-    `EXCLUDE_NAMES`）。也就是说：**换一份新检出的工程、或重新解压一次交付包，
+    （第 23 行），新的 ICT 交付脚本也必须继续排除它。也就是说：
+    **换一份新检出的工程、或重新解压一次交付包，
     之前注册的账号就是不在的**，只能重新注册。
 
     这本身是有意为之（免得几十个联调测试账号被打进交付物），但现场完全看不出线索 ——

@@ -11,7 +11,7 @@ while ($dir) {
 	$dir = $parent
 }
 if (-not (Test-Path (Join-Path $dir 'server\zhixue-agent-server\run.py'))) {
-	$dir = 'E:\C4-AI-national-final-by-xzhzyyheb-main\C4-AI-national-final-by-xzhzyyheb-main'
+	$dir = $PSScriptRoot
 }
 $srv = Join-Path $dir 'server\zhixue-agent-server'
 if (-not (Test-Path (Join-Path $srv 'run.py'))) {

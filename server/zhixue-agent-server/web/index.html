@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知学 Mate · AgentArts Demo</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e5e7eb; --text:#111827; --muted:#6b7280;
+          --brand:#2563eb; --ok:#059669; --warn:#b45309; --err:#dc2626; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--card);
+           border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+  .badge.cloud { color:var(--ok); border-color:#a7f3d0; background:#ecfdf5; }
+  .badge.local { color:var(--warn); border-color:#fde68a; background:#fffbeb; }
+  main { flex:1; display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:12px; padding:12px; min-height:0; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px;
+            display:flex; flex-direction:column; min-height:0; }
+  section h2 { font-size:13px; margin:0; padding:10px 12px; border-bottom:1px solid var(--line);
+               color:var(--muted); font-weight:600; }
+  .body { flex:1; overflow:auto; padding:12px; }
+  .row { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line); }
+  input[type=text] { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  button { padding:10px 14px; border:1px solid var(--line); background:#fff; border-radius:8px;
+           cursor:pointer; font-size:14px; }
+  button.primary { background:var(--brand); color:#fff; border-color:var(--brand); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .msg { margin:0 0 10px; padding:10px 12px; border-radius:10px; white-space:pre-wrap; line-height:1.6; }
+  .msg.user { background:#eff6ff; align-self:flex-end; }
+  .msg.agent { background:#f9fafb; border:1px solid var(--line); }
+  .think { color:var(--muted); font-size:12px; font-style:italic; margin-bottom:8px; }
+  .step { display:flex; gap:8px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed var(--line);
+          font-size:13px; }
+  .step .dot { width:8px; height:8px; border-radius:50%; background:var(--line); margin-top:5px; flex:none; }
+  .step.run .dot { background:var(--brand); }
+  .step.agent .dot { background:var(--ok); }
+  .step.tool .dot { background:var(--warn); }
+  .step.err .dot { background:var(--err); }
+  .step .meta { color:var(--muted); font-size:12px; }
+  .empty { color:var(--muted); font-size:13px; }
+  .evi { font-size:13px; padding:8px 0; border-bottom:1px dashed var(--line); }
+  .evi b { font-weight:600; }
+  .evi code { background:#f3f4f6; padding:1px 4px; border-radius:4px; font-size:12px; }
+  .tip { font-size:12px; color:var(--muted); padding:0 12px 10px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  /* ---- 依据链：可点开的数字与引用 ---- */
+  .chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 0 10px; }
+  .chip { display:inline-flex; align-items:center; gap:4px; font-size:12px; padding:4px 8px;
+          border:1px solid var(--line); border-radius:999px; background:#fff; cursor:pointer; }
+  .chip:hover { border-color:var(--brand); color:var(--brand); }
+  .chip .tag { font-size:10px; color:var(--muted); }
+  .cite { font-size:13px; padding:8px 0; border-bottom:1px dashed var(--line); cursor:pointer; }
+  .cite:hover { background:#f9fafb; }
+  .cite .src { color:var(--muted); font-size:12px; }
+  .cite code { background:#f3f4f6; padding:1px 4px; border-radius:4px; font-size:11px; }
+  .modal { position:fixed; inset:0; background:rgba(17,24,39,.45); display:none;
+           align-items:center; justify-content:center; padding:24px; z-index:50; }
+  .modal.open { display:flex; }
+  .modal .box { background:#fff; border-radius:12px; max-width:640px; width:100%;
+                max-height:80vh; overflow:auto; padding:18px 20px; }
+  .modal h3 { margin:0 0 10px; font-size:15px; }
+  .modal .kv { font-size:13px; padding:6px 0; border-bottom:1px dashed var(--line); }
+  .modal .kv b { font-weight:600; }
+  .modal .close { float:right; border:none; background:none; font-size:18px; cursor:pointer; color:var(--muted); }
+
+  /* ---- 练习卡：出题后可以直接点选项作答 ---- */
+  .quiz { margin-top:10px; border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+          background:#fff; font-size:13px; }
+  .quiz .q { margin-bottom:8px; line-height:1.6; }
+  .quiz .opt { display:block; width:100%; text-align:left; margin:6px 0; padding:8px 10px;
+               border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer;
+               font-size:13px; }
+  .quiz .opt:hover { border-color:var(--brand); }
+  .quiz .opt.sel { border-color:var(--brand); background:#eff6ff; }
+  .quiz .bar { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .quiz .result { margin-top:10px; padding:8px 10px; border-radius:8px; background:#f9fafb;
+                  font-size:12px; line-height:1.7; }
+  .quiz .opt.ok { border-color:var(--ok); background:#ecfdf5; }
+  .quiz .opt.bad { border-color:var(--err); background:#fef2f2; }
+  .quiz .pt { padding:2px 0; }
+  .quiz .expl { margin:4px 0 8px 18px; padding:6px 8px; font-size:12px; line-height:1.7;
+                color:#374151; background:#fff; border-left:2px solid var(--brand); }
+  .quiz .expl .src { color:var(--muted); }
+  .quiz .more { background:none; border:none; color:var(--brand); cursor:pointer;
+                font-size:12px; padding:0 4px; }
+
+  /* ---- 依据挂在回答下方，而不是单独摆一个面板 ---- */
+  .foot { display:flex; gap:8px; align-items:center; margin-top:8px; padding-top:8px;
+          border-top:1px dashed var(--line); font-size:12px; }
+  .foot button { font-size:12px; padding:3px 8px; border-radius:999px; }
+  .fold { margin-top:8px; padding:8px 10px; background:#f9fafb; border:1px solid var(--line);
+          border-radius:8px; font-size:12px; }
+  .fold .item { padding:6px 0; border-bottom:1px dashed var(--line); cursor:pointer; }
+  .fold .item:last-child { border-bottom:none; }
+  .fold .item:hover { color:var(--brand); }
+  .num { border-bottom:1px dotted var(--brand); cursor:pointer; }
+
+  /* ---- 正式化：品牌头 / 欢迎卡 / 统一面板 ---- */
+  .brand { display:flex; align-items:center; gap:10px; }
+  .logo { width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+          background:linear-gradient(135deg,#2f6bff,#7aa2ff); color:#fff; font-weight:700;
+          font-size:16px; letter-spacing:.5px; box-shadow:0 2px 6px rgba(47,107,255,.28); }
+  .brand .name { font-size:15px; font-weight:650; letter-spacing:.2px; }
+  .brand .sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  header { box-shadow:0 1px 2px rgba(15,23,42,.04); position:relative; z-index:5; }
+  section { box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  section h2 { display:flex; align-items:center; gap:6px; letter-spacing:.2px; }
+  section h2::before { content:""; width:6px; height:6px; border-radius:2px; background:var(--brand); }
+  .welcome { padding:18px 6px; }
+  .welcome h3 { margin:0 0 6px; font-size:15px; }
+  .welcome p { margin:0 0 14px; color:var(--muted); font-size:13px; line-height:1.7; }
+  .sugs { display:flex; flex-wrap:wrap; gap:8px; }
+  .sug { font-size:13px; padding:7px 12px; border:1px solid var(--line); border-radius:999px;
+         background:#fff; cursor:pointer; color:#334155; }
+  .sug:hover { border-color:var(--brand); color:var(--brand); background:#f5f8ff; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); padding:4px 0 10px; }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend i { width:7px; height:7px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">知</div>
+    <div>
+      <div class="name">知学 Mate · 智能学习伴侣</div>
+      <div class="sub">华为云 AgentArts 多智能体 · MCP 工具编排</div>
+    </div>
+  </div>
+  <span style="width:8px"></span>
+  <span id="badge" class="badge">连接中…</span>
+  <span class="badge" id="runtime"></span>
+  <button class="badge" id="profileChip" style="cursor:pointer">学情</button>
+  <button class="badge" id="scopeChip" style="cursor:pointer">🎯 学习范围</button>
+  <button class="badge" id="wrongChip" style="cursor:pointer">📕 错题本</button>
+  <span style="flex:1"></span>
+  <button id="btnUpload">📎 上传讲义</button>
+  <button id="btnPhoto">📷 拍错题</button>
+  <button id="btnSchedule">📅 课程表</button>
+  <button id="btnDeadline">⏰ 作业DDL</button>
+  <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.md,.txt,.pptx,.xlsx,.csv" hidden />
+  <input type="file" id="photoInput" accept="image/*" hidden />
+</header>
+
+<main>
+  <section>
+    <h2>对话</h2>
+    <div class="body" id="chat">
+      <div class="welcome" id="welcome">
+        <h3>你好，我是知学 Mate</h3>
+        <p>我可以看你的薄弱点、排学习计划、按资料出题、解读练习结果。<br>
+           所有分数与掌握度都由确定性工具计算，不是模型编的。</p>
+        <div class="sugs">
+          <button class="sug" data-q="帮我看看我哪里薄弱">我哪里薄弱</button>
+          <button class="sug" data-q="我今晚只有60分钟怎么安排">今晚 60 分钟怎么安排</button>
+          <button class="sug" data-q="出两道二叉树的题">出两道二叉树遍历的题</button>
+          <button class="sug" id="welcomeScope">先设定学习范围</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <input type="text" id="input" placeholder="输入问题，或点上面的示例开始" />
+      <button class="primary" id="btnSend">发送</button>
+    </div>
+    <div class="tip" id="tip">上传讲义后可基于资料出题；拍错题可识别题干并讲解。</div>
+  </section>
+
+  <section>
+    <h2>执行时间线</h2>
+    <div class="body">
+      <div class="legend">
+        <span><i style="background:#2f6bff"></i>运行</span>
+        <span><i style="background:#059669"></i>子智能体</span>
+        <span><i style="background:#b45309"></i>工具调用</span>
+        <span><i style="background:#dc2626"></i>失败</span>
+      </div>
+      <div id="timeline"><div class="empty">发送一句话后，这里会显示由哪个 Agent 处理、调了哪些工具。</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>运行详情</h2>
+    <div class="body" id="evidence">
+      <div id="runinfo"></div>
+      <div class="empty" id="evi-empty">运行 ID 与执行记录；回答的依据会直接显示在回答下方。</div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <button class="close" id="modalClose">×</button>
+    <h3 id="modalTitle"></h3>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="wrongModal">
+  <div class="box">
+    <button class="close" id="wrongClose">×</button>
+    <h3>错题本</h3>
+    <div class="empty" style="margin-bottom:8px">交卷时错的题会自动进来；拍题确认做错也可以手动加入。</div>
+    <div id="wrongList"></div>
+  </div>
+</div>
+
+<div class="modal" id="importModal">
+  <div class="box">
+    <button class="close" id="impClose">×</button>
+    <h3 id="impTitle">导入</h3>
+    <div class="empty" id="impHint" style="margin-bottom:8px"></div>
+    <textarea id="impText" rows="5"
+      style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;
+             font-size:13px;line-height:1.7;resize:vertical"></textarea>
+    <div id="impFileRow" style="margin-top:8px;font-size:12px;color:#6b7280">
+      也可以直接选一张课表截图：<input type="file" id="impFile" accept="image/*" />
+    </div>
+    <button class="primary" id="impSave" style="margin-top:12px">导入</button>
+  </div>
+</div>
+
+<div class="modal" id="onboard">
+  <div class="box">
+    <h3>先设定你的学习范围</h3>
+    <div class="empty" style="margin-bottom:10px">
+      勾选要学的知识点。它们会以"未评估"状态加入学情——做完一组练习后才有真实掌握度。
+    </div>
+    <div style="margin:8px 0">
+      <b style="font-size:13px">课程</b>
+      <input id="obCourse" type="text" placeholder="例如：数据结构"
+             style="margin-left:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;width:60%" />
+    </div>
+    <div style="margin:10px 0">
+      <b style="font-size:13px">知识点</b>
+      <div class="empty" style="margin:4px 0 6px">每行一个，或用逗号分隔。名字尽量和讲义里的说法一致（例如"二叉树"）。</div>
+      <textarea id="obPointsText" rows="4"
+        placeholder="二叉树&#10;图算法&#10;哈希冲突"
+        style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;
+               font-size:13px;line-height:1.7;resize:vertical"></textarea>
+      <div class="sugs" style="margin-top:8px">
+        <button class="sug" data-fill="二叉树, 图算法, 哈希冲突">数据结构常用</button>
+        <button class="sug" data-fill="TCP 三次握手, 拥塞控制">计算机网络常用</button>
+      </div>
+    </div>
+    <div style="margin:8px 0">
+      <b style="font-size:13px">目标</b>
+      <input id="obGoal" type="text" placeholder="例如：过期末考试"
+             style="margin-left:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px" />
+    </div>
+    <button class="primary" id="obSave" style="margin-top:10px">保存并开始</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const chat = $("chat"), timeline = $("timeline"), evidence = $("evidence");
+let sessionId = "chat-" + Math.random().toString(36).slice(2, 10);
+let currentRunId = "";
+let lastUserText = "";
+let agentBuffer = "";
+let agentEl = null;
+
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+// 极简 Markdown：只处理 **加粗** 和换行。
+// 模型常输出 **重点**，用 textContent 会原样显示星号，看着像调试信息。
+function renderRich(el, text) {
+  const safe = String(text).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  el.innerHTML = safe
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/^\s*[-*]\s+/gm, "· ")
+    .replace(/\n/g, "<br>");
+}
+
+function addStep(kind, title, meta) {
+  const div = document.createElement("div");
+  div.className = "step " + kind;
+  div.innerHTML = '<span class="dot"></span><div><div>' + title + '</div>' +
+                  (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
+  timeline.appendChild(div);
+  timeline.scrollTop = timeline.scrollHeight;
+  return div;
+}
+
+function addCitation(fileName, heading, hash) {
+  const div = document.createElement("div");
+  div.className = "evi";
+  div.innerHTML = "<b>资料</b> " + (fileName || "（未知文件）") +
+    (heading ? " · " + heading : "") +
+    (hash ? '<br><code>' + hash.slice(0, 16) + "…</code>" : "");
+  evidence.appendChild(div);
+}
+
+async function refreshRuntime() {
+  try {
+    const r = await fetch("/api/v2/agent/runtime");
+    const d = await r.json();
+    const b = $("badge");
+    b.textContent = d.ready ? "云端 AgentArts" : "降级 / 未就绪";
+    b.className = "badge " + (d.ready ? "cloud" : "local");
+    $("runtime").textContent = [d.apiStyle, d.runtimeName || d.agentId || "", d.agentVersion]
+      .filter(Boolean).join(" · ");
+  } catch (e) { $("badge").textContent = "网关不可用"; }
+}
+
+async function send() {
+  const text = $("input").value.trim();
+  if (!text) return;
+  $("input").value = "";
+  if ($("welcome")) $("welcome").remove();   // 首次提问后收起欢迎卡
+  lastUserText = text;
+  window.__runStartedAt = Date.now();   // 用于只挑"本轮之后"生成的题
+  addMsg("user", text);
+  agentBuffer = "";
+  agentEl = addMsg("agent", "…");
+  // 出题这类操作要等 30–60 秒，且平台在工具执行期间不发事件。
+  // 不显示计时的话，界面看起来像卡死。
+  const waitStarted = Date.now();
+  if (window.__waitTimer) clearInterval(window.__waitTimer);
+  window.__waitTimer = setInterval(() => {
+    if (agentBuffer) return;
+    const secs = Math.round((Date.now() - waitStarted) / 1000);
+    agentEl.textContent = secs > 3
+      ? "处理中… 已等 " + secs + " 秒（复杂请求通常 20–60 秒）"
+      : "…";
+  }, 1000);
+  timeline.innerHTML = "";
+  $("runinfo").innerHTML = "";
+
+  const send = $("btnSend");
+  send.disabled = true;
+  try {
+    const resp = await fetch("/api/v2/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, sessionId })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      agentEl.textContent = "调用失败：" + (err.errorCode || resp.status) + " " + (err.message || "");
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split("\n\n");
+      buf = blocks.pop();
+      for (const block of blocks) handleBlock(block);
+    }
+    if (buf.trim()) handleBlock(buf);
+    if (!agentBuffer.trim()) agentEl.textContent = "（没有收到正文）";
+  } catch (e) {
+    if (window.__waitTimer) { clearInterval(window.__waitTimer); window.__waitTimer = null; }
+    agentEl.textContent = "网络异常：" + e.message;
+  } finally {
+    send.disabled = false;
+  }
+}
+
+function handleBlock(block) {
+  let ev = "message", data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) ev = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  let obj; try { obj = JSON.parse(data); } catch (e) { return; }
+
+  if (obj.type === "ready") {
+    currentRunId = obj.runId;
+    addStep("run", "开始处理", "runId " + obj.runId);
+    $("runinfo").innerHTML = '<div class="evi"><b>运行 ID</b> <code>' + obj.runId +
+      '</code><br><b>会话</b> <code>' + (obj.conversationId || "") + "</code></div>";
+  } else if (obj.type === "subagent_started") {
+    addStep("agent", "交给 " + (obj.workflowName || "子智能体"), "workflow " + (obj.workflowId || ""));
+  } else if (obj.type === "subagent_finished") {
+    addStep("agent", (obj.workflowName || "子智能体") + " 完成", "");
+    // 平台的 End 节点会同时给 message(summary) 和 workflow_end(output)，
+    // 直接赋值会得到重复两遍的回复。这里只在"当前为空"或"output 更完整"时才覆盖，
+    // 且覆盖前判断是否有包含关系。
+    if (obj.output) {
+      const out = obj.output.trim();
+      if (!agentBuffer.trim()) {
+        agentBuffer = out;
+        renderRich(agentEl, out);
+      } else if (out.length > agentBuffer.trim().length && !out.includes(agentBuffer.trim())) {
+        agentBuffer = out;
+        renderRich(agentEl, out);
+      }
+    }
+  } else if (obj.type === "tool_started") {
+    addStep("tool", "调用工具 " + (obj.name || ""), JSON.stringify(obj.arguments || {}).slice(0, 120));
+  } else if (obj.type === "tool_finished") {
+    addStep("tool", "工具完成 " + (obj.name || ""),
+      (obj.latencyMs ? obj.latencyMs + " ms" : "") + (obj.ok === false ? " · 失败" : ""));
+  } else if (obj.type === "agent_message") {
+    const delta = obj.delta || "";
+    // 平台有三种给法混在一起：逐字增量、整段 summary、工作流最终 output。
+    // 判定规则：长文本（>60 字）视为"整段"，直接替换；短片段视为增量，追加。
+    if (delta.length > 60) {
+      agentBuffer = delta;
+    } else if (delta && !agentBuffer.includes(delta)) {
+      agentBuffer += delta;
+    }
+    renderRich(agentEl, agentBuffer);
+    // 本地兜底必须显式标注：否则用户会以为是模型回答的。
+    if (obj.fallback === "local" && !agentEl.querySelector(".local-tag")) {
+      const tag = document.createElement("span");
+      tag.className = "badge local-tag";
+      tag.textContent = "本地兜底 · 非模型生成";
+      tag.style.marginLeft = "6px";
+      agentEl.appendChild(tag);
+    }
+    chat.scrollTop = chat.scrollHeight;
+  } else if (obj.type === "agent_thinking") {
+    agentEl.textContent = agentBuffer ? agentBuffer : "思考中…";
+  } else if (obj.type === "metrics") {
+    const l = obj.latency || {};
+    const parts = ["plugin", "model", "overall"].filter(k => l[k] != null)
+      .map(k => k + " " + Math.round(l[k] * 1000) + "ms");
+    if (parts.length) addStep("run", "耗时", parts.join(" · "));
+  } else if (obj.type === "run_failed") {
+    // 失败也要停表，否则界面一直显示"处理中…已等 N 秒"
+    if (window.__waitTimer) { clearInterval(window.__waitTimer); window.__waitTimer = null; }
+    addStep("err", "运行失败 " + (obj.errorCode || ""), (obj.message || "").slice(0, 160));
+    renderRich(agentEl, "运行失败：" + (obj.message || obj.errorCode || ""));
+  } else if (obj.type === "run_finished") {
+    if (window.__waitTimer) { clearInterval(window.__waitTimer); window.__waitTimer = null; }
+    addStep("run", "结束", obj.incomplete ? "平台提前结束（可能被截断）" : "");
+    // 依据挂在当前这条回答下面；学情数字可能刚被错题/判分改过，顺手刷新一下。
+    attachEvidence(agentEl, lastUserText);
+    loadProfile();
+    attachQuiz(agentEl);
+  }
+}
+
+async function upload() {
+  const file = $("fileInput").files[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  let binary = ""; const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const contentBase64 = btoa(binary);
+
+  $("tip").textContent = "上传中：解析 " + file.name + " …";
+  try {
+    const list = await (await fetch("/api/v1/knowledge-bases")).json();
+    const kb = (list.knowledgeBases && list.knowledgeBases[0]) || (list.items && list.items[0]);
+    if (!kb) throw new Error("还没有知识库，请先在服务端创建");
+    const resp = await fetch("/api/v1/knowledge-bases/" + kb.kbId + "/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, contentBase64: contentBase64,
+                             mimeType: file.type || "text/plain", sizeBytes: file.size })
+    });
+    const d = await resp.json();
+    if (d.errorCode) throw new Error(d.message || d.errorCode);
+    $("tip").textContent = "已解析：" + file.name + "（" + (d.chunkCount || 0) + " 个切片）";
+    $("runinfo").innerHTML = '<div class="evi"><b>新上传</b> ' + d.fileName +
+      '<br><code>' + d.documentId + "</code></div>";
+  } catch (e) {
+    $("tip").textContent = "上传失败：" + e.message;
+  } finally {
+    $("fileInput").value = "";
+  }
+}
+
+// 把图片压到长边 1600px 再上传：手机原图动辄 8MB，base64 会撑爆请求体。
+async function imageToBase64(file, maxSide = 1600) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  const buf = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+async function analyzePhoto() {
+  const file = $("photoInput").files[0];
+  if (!file) return;
+  $("tip").textContent = "识别中：正在读取图片里的题目…";
+
+  try {
+    const imageBase64 = await imageToBase64(file);
+    const resp = await fetch("/api/v2/agent/vision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64 })
+    });
+    const d = await resp.json();
+
+    if (!d.readable) {
+      // 识别失败要如实说，不猜知识点——否则后面的诊断会基于假题目给结论。
+      $("tip").textContent = "没识别出题目：" + (d.reason || d.message || d.errorCode || "请重拍");
+      addMsg("agent", "这张图我没能识别出题目。" +
+        (d.reason ? "原因：" + d.reason : "") + "\n可以直接把题干打进来，我照样能诊断。");
+      return;
+    }
+
+    const kp = d.knowledgePointGuess ? "疑似知识点：" + d.knowledgePointGuess : "未能判断知识点";
+    const conf = d.confidence != null ? "识别把握 " + Math.round(d.confidence * 100) + "%" : "";
+    const recognized = addMsg("agent", "识别到的题目：\n" + d.stem +
+      (d.options && d.options.length ? "\n" + d.options.join("\n") : "") +
+      "\n" + kp + (conf ? " · " + conf : ""));
+
+    // 拍题确认做错 → 一键进错题本（只记录，不动掌握度；掌握度由判分/错题工具改）
+    if (d.stem) {
+      const addBtn = document.createElement("button");
+      addBtn.className = "more";
+      addBtn.style.marginTop = "6px";
+      addBtn.textContent = "记入错题本";
+      addBtn.onclick = async () => {
+        addBtn.disabled = true;
+        addBtn.textContent = "记录中…";
+        try {
+          const resp = await fetch("/api/v2/agent/wrongbook", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ stem: d.stem, options: d.options || [],
+                                   knowledgePointId: d.knowledgePointGuess || "未分类",
+                                   knowledgePointName: d.knowledgePointGuess || "未分类",
+                                   reason: d.errorTypeGuess || "",
+                                   sourceType: "photo" }),
+          });
+          const added = await resp.json();
+          addBtn.textContent = added.errorCode ? "记录失败" : "已记入错题本（共 " + added.total + " 题）";
+        } catch (e) {
+          addBtn.textContent = "记录失败";
+          addBtn.disabled = false;
+        }
+      };
+      recognized.appendChild(addBtn);
+    }
+
+    $("tip").textContent = "已识别，确认后点发送即可诊断。";
+    $("input").value = "我拍了这道错题：" + d.suggestedQuery + "，帮我看看错在哪";
+    $("input").focus();
+
+    $("runinfo").innerHTML =
+      '<div class="evi"><b>图片识别</b> ' + (file.name || "photo") +
+      '<br>知识点：' + (d.knowledgePointGuess || "未判断") +
+      '<br>把握：' + Math.round((d.confidence || 0) * 100) + "%" +
+      (d.handwriting ? "<br>含手写作答" : "") +
+      (d.errorTypeGuess ? "<br>疑似错因：" + d.errorTypeGuess : "") + "</div>";
+  } catch (e) {
+    $("tip").textContent = "识别失败：" + e.message;
+  } finally {
+    $("photoInput").value = "";
+  }
+}
+
+// ------------------------------------------------------------------ 依据链
+// 设计意图：界面上每个数字都能点开看它怎么来的。
+// 掌握度来自工具计算（🧮），引用来自 MCP 检索（📚），两者都不由模型编。
+let profileCache = { mastery: [], wrongBook: [], rules: [], profileVersion: null };
+
+function openModal(title, bodyHtml) {
+  $("modalTitle").textContent = title;
+  $("modalBody").innerHTML = bodyHtml;
+  $("modal").classList.add("open");
+}
+
+function closeModal() { $("modal").classList.remove("open"); }
+
+async function loadProfile() {
+  try {
+    const resp = await fetch("/api/v2/agent/profile");
+    profileCache = await resp.json();
+    const rows = profileCache.mastery || [];
+    // 学情不是主界面内容，收在顶部一个小入口里，点开才看，避免干扰对话。
+    $("profileChip").textContent = rows.length ? "学情 · " + rows.length + " 个知识点" : "学情";
+    // 冷启动：还没任何知识点时，请用户自己勾选范围（数据来源是"用户声明"，
+    // 不是我们预置——答辩时这一点很关键）。
+    if (!rows.length) {
+      openOnboard();
+    }
+  } catch (e) { /* 依据面板失败不影响对话 */ }
+}
+
+function showProfileOverview() {
+  const rows = profileCache.mastery || [];
+  if (!rows.length) {
+    openModal("学情", '<div class="kv">暂无掌握度数据。跑一次演示复位或做一次判分。</div>');
+    return;
+  }
+  const html = rows.map((row) =>
+    '<div class="kv"><b>' + (row.knowledgePointName || row.knowledgePointId) + '</b> ' +
+    Math.round(row.masteryScore) + ' <span class="tag">🧮计算</span><br>' +
+    '<span class="src">来源：' + (profileCache.sourceText || row.source) + '</span></div>'
+  ).join("") +
+    '<div class="kv"><b>画像版本</b> v' + (profileCache.profileVersion ?? "-") + '</div>' +
+    '<div class="kv"><b>换算规则</b><br>' +
+    (profileCache.rules || []).map((r) => r.id + "：" + r.rule).join("<br>") + '</div>' +
+    '<div style="margin-top:12px"><button id="btnResetScope">重新设定学习范围</button></div>';
+  openModal("学情与换算规则", html);
+  const reset = $("modalBody").querySelector("#btnResetScope");
+  if (reset) {
+    reset.onclick = () => {
+      closeModal();
+      openOnboard();
+    };
+  }
+}
+
+function showMastery(pointId) {
+  const row = (profileCache.mastery || []).find((m) => m.knowledgePointId === pointId) || {};
+  const wrong = (profileCache.wrongBook || []).filter((w) => w.knowledgePointId === pointId);
+  const sourceText = {
+    seed: "演示基线（seed）",
+    assessment: "判分写入（assessment）",
+    wrong_book: "错题录入（wrong_book）"
+  }[row.source] || (row.source || "未知");
+
+  let html = '<div class="kv"><b>当前掌握度</b> ' + Math.round(row.masteryScore || 0) +
+    ' <span class="tag">🧮 工具计算</span></div>' +
+    '<div class="kv"><b>来源</b> ' + sourceText + '</div>' +
+    '<div class="kv"><b>画像版本</b> v' + (profileCache.profileVersion ?? "-") + '</div>';
+
+  html += '<div class="kv"><b>错题记录</b> ' +
+    (wrong.length ? wrong.map((w) => (w.stem || "") + "（错 " + w.wrongCount + " 次，" +
+      (w.lastWrongAt || "").slice(0, 19) + "）").join("<br>") : "该知识点暂无错题记录") +
+    '</div>';
+
+  html += '<div class="kv"><b>换算规则</b><br>' +
+    (profileCache.rules || []).map((r) => r.id + "：" + r.rule).join("<br>") + '</div>';
+
+  openModal((row.knowledgePointName || pointId) + " · 掌握度依据", html);
+}
+
+async function fetchCitations(query) {
+  try {
+    const resp = await fetch("/api/v2/agent/knowledge?q=" + encodeURIComponent(query));
+    const data = await resp.json();
+    return data.hits || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// 依据挂在**这条回答**下面：用户看的是"这句话凭什么"，而不是侧栏里一堆全局数据。
+async function attachEvidence(bubble, query) {
+  if (!bubble) return;
+
+  const foot = document.createElement("div");
+  foot.className = "foot";
+
+  const btnMastery = document.createElement("button");
+  btnMastery.textContent = "🧮 学情依据";
+  btnMastery.onclick = showProfileOverview;
+  foot.appendChild(btnMastery);
+
+  const btnCite = document.createElement("button");
+  btnCite.textContent = "📚 检索中…";
+  btnCite.disabled = true;
+  foot.appendChild(btnCite);
+  bubble.appendChild(foot);
+
+  if (!query) { btnCite.textContent = "📚 无资料依据"; return; }
+
+  const hits = await fetchCitations(query);
+  const fold = document.createElement("div");
+  fold.className = "fold";
+  fold.style.display = "none";
+
+  if (!hits.length) {
+    // 没有依据就如实说"没有"，不留一段看起来像引用的话。
+    fold.innerHTML = "<div>本次回答没有引用资料</div>";
+    btnCite.textContent = "📚 无资料依据";
+  } else {
+    fold.innerHTML = hits.map((hit, index) =>
+      '<div class="item" data-i="' + index + '"><b>' + (hit.fileName || "（未命名文件）") +
+      "</b>" + (hit.headingPath ? " · " + hit.headingPath : "") +
+      '<div class="src">' + (hit.text || "").slice(0, 70) + "…</div></div>").join("");
+    fold.querySelectorAll(".item").forEach((el) => {
+      el.onclick = () => {
+        const hit = hits[Number(el.dataset.i)];
+        openModal("资料片段",
+          '<div class="kv"><b>文件</b> ' + (hit.fileName || "-") + '</div>' +
+          '<div class="kv"><b>章节</b> ' + (hit.headingPath || "-") + '</div>' +
+          '<div class="kv"><b>片段哈希</b> <code>' + (hit.contentHash || "-") + '</code></div>' +
+          '<div class="kv"><b>相似度</b> ' + (hit.score ?? "-") + '</div>' +
+          '<div class="kv" style="white-space:pre-wrap">' + (hit.text || "") + '</div>');
+      };
+    });
+    btnCite.textContent = "📚 资料依据 · " + hits.length;
+  }
+
+  btnCite.disabled = false;
+  btnCite.onclick = () => {
+    fold.style.display = fold.style.display === "none" ? "block" : "none";
+  };
+  bubble.appendChild(fold);
+}
+
+// 出题后渲染成可点的练习卡：点选项=作答，提交后网关直连 MCP 判分。
+// 这样页面天然知道每道题的 exerciseId，不需要"第一题对应哪道"的映射。
+async function attachQuiz(bubble) {
+  if (!bubble || bubble.dataset.quiz === "1") return;   // 同一气泡只挂一次，避免重复卡片
+  let data;
+  try {
+    data = await (await fetch("/api/v2/agent/exercises?limit=6")).json();
+  } catch (e) { return; }
+
+  // 只看**本次提问之后**生成的题：否则上一轮的题会被反复渲染出来
+  const since = (window.__runStartedAt || Date.now()) - 5000;
+  const items = (data.exercises || []).filter((ex) => {
+    const t = Date.parse(ex.createdAt || "");
+    return isNaN(t) ? false : t >= since;
+  }).slice(0, 3);
+  if (!items.length) return;
+
+  bubble.dataset.quiz = "1";
+  const card = document.createElement("div");
+  card.className = "quiz";
+  const picks = {};
+
+  items.forEach((ex, index) => {
+    const q = document.createElement("div");
+    q.className = "q";
+    q.textContent = (index + 1) + ". " + ex.stem;
+    card.appendChild(q);
+
+    (ex.options || []).forEach((opt) => {
+      const btn = document.createElement("button");
+      btn.className = "opt";
+      btn.textContent = opt;
+      btn.dataset.q = ex.exerciseId;
+      btn.onclick = () => {
+        if (card.dataset.done === "1") return;   // 交过卷就不能再改
+        picks[ex.exerciseId] = String(opt).trim().charAt(0).toUpperCase();
+        card.querySelectorAll('[data-q="' + ex.exerciseId + '"]').forEach((el) => el.classList.remove("sel"));
+        btn.classList.add("sel");
+        submit.disabled = false;
+      };
+      card.appendChild(btn);
+    });
+  });
+
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const submit = document.createElement("button");
+  submit.className = "primary";
+  submit.textContent = "提交作答";
+  submit.disabled = true;
+  bar.appendChild(submit);
+  card.appendChild(bar);
+
+  submit.onclick = async () => {
+    if (card.dataset.done === "1") return;
+    submit.disabled = true;
+    submit.textContent = "判分中…";
+    const answers = Object.entries(picks).map(([exerciseId, answer]) => ({ exerciseId, answer }));
+    try {
+      const resp = await fetch("/api/v2/agent/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers })
+      });
+      const result = await resp.json();
+      const box = document.createElement("div");
+      box.className = "result";
+      if (result.errorCode) {
+        box.innerHTML = "<b>提交失败</b> " + (result.message || result.errorCode);
+        submit.disabled = false;
+        submit.textContent = "重新提交";
+      } else {
+        // 卡片只留"分数 + 对错"，讲解正文作为一条回答单独出现（见下方 addMsg）
+        const lines = [];
+        lines.push("<b>得分</b> " + Math.round(result.score) + " 分 <span class='tag'>🧮 工具计算</span>");
+        (result.perQuestion || []).forEach((row, i) => {
+          lines.push("<div class='pt'>" + (row.correct ? "✅" : "❌") +
+            " 第 " + (i + 1) + " 题：你选 " + (row.answer || "—") +
+            (row.correct ? "" : "，正确答案 <b>" + row.correctAnswer + "</b>") + "</div>");
+          // 答题卡上把正确项标绿、选错的标红
+          card.querySelectorAll('[data-q="' + row.exerciseId + '"]').forEach((el) => {
+            if (el.textContent.trim().charAt(0).toUpperCase() === row.correctAnswer) el.classList.add("ok");
+            else if (el.classList.contains("sel")) el.classList.add("bad");
+          });
+        });
+        box.innerHTML = lines.join("<br>");
+        // 解析、掌握度、计划、平台评估 → 作为一条独立回答进入对话流
+        if (result.reply) {
+          const reply = document.createElement("div");
+          reply.className = "msg agent";
+          renderRich(reply, result.reply);
+          chat.appendChild(reply);
+          chat.scrollTop = chat.scrollHeight;
+        }
+        // 交卷成功：锁死整张卡，防止反复提交反复出结果
+        card.dataset.done = "1";
+        card.querySelectorAll(".opt").forEach((el) => { el.disabled = true; el.style.cursor = "default"; });
+        submit.textContent = "已交卷";
+        submit.disabled = true;
+        loadProfile();
+      }
+      card.appendChild(box);
+    } catch (e) {
+      submit.textContent = "提交失败，重试";
+      submit.disabled = false;
+    }
+  };
+
+  bubble.appendChild(card);
+}
+
+// ------------------------------------------------------------------ 冷启动
+// 课程与知识点由**用户自己输入**：数据来源是"用户声明"，不是我们预置。
+// 知识点 ID 直接用用户写的名字，这样能和讲义解析出的知识点同名，
+// 出题 / 判分 / 学情才对得上。
+function fillExample(text) {
+  $("obPointsText").value = text.replace(/[,，]\s*/g, "\n");
+}
+
+function parsePoints(text) {
+  return String(text || "")
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 20)
+    .map((name) => ({ knowledgePointId: name, knowledgePointName: name }));
+}
+
+async function saveOnboard() {
+  const picked = parsePoints($("obPointsText").value);
+  if (!picked.length) { alert("请至少填一个知识点"); return; }
+  const resp = await fetch("/api/v2/agent/targets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ courseName: $("obCourse").value.trim(),
+                           goal: $("obGoal").value.trim(),
+                           knowledgePoints: picked }),
+  });
+  const data = await resp.json();
+  if (data.errorCode) { alert("保存失败：" + (data.message || data.errorCode)); return; }
+  $("onboard").classList.remove("open");
+  $("tip").textContent = "已添加 " + picked.length + " 个知识点（未评估）。做一组练习后掌握度才会更新。";
+  loadProfile();
+}
+
+function openOnboard() {
+  $("onboard").classList.add("open");
+  $("obPointsText").focus();
+}
+
+document.querySelectorAll("[data-fill]").forEach((el) => {
+  el.onclick = () => fillExample(el.dataset.fill);
+});
+$("obSave").onclick = saveOnboard;
+
+// ------------------------------------------------------------------ 课表 / DDL 导入
+let importKind = "schedule";
+
+function openImport(kind) {
+  importKind = kind;
+  const isSchedule = kind === "schedule";
+  $("impTitle").textContent = isSchedule ? "导入课程表" : "导入作业 / 考试 DDL";
+  $("impHint").textContent = isSchedule
+    ? "每行一门课（可直接粘贴课表列表），或选一张课表截图由模型识别。"
+    : "每行一条，格式：课程 事项 截止日期。例如：数据结构 作业3 2026-12-01";
+  $("impText").placeholder = isSchedule
+    ? "数据结构\n计算机网络\n概率论"
+    : "数据结构 作业3 2026-12-01\n计算机网络 实验报告 2026-12-10\n概率论 期末考试 2026-12-25";
+  $("impFileRow").style.display = isSchedule ? "block" : "none";
+  $("impText").value = "";
+  $("impFile").value = "";
+  $("importModal").classList.add("open");
+}
+
+async function saveImport() {
+  const lines = $("impText").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  const file = $("impFile").files[0];
+  $("impSave").disabled = true;
+  $("impSave").textContent = "导入中…";
+  try {
+    let resp;
+    if (importKind === "schedule" && file) {
+      const imageBase64 = await imageToBase64(file);
+      resp = await fetch("/api/v2/agent/schedule", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64 }),
+      });
+    } else if (importKind === "schedule") {
+      resp = await fetch("/api/v2/agent/schedule", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courses: lines }),
+      });
+    } else {
+      resp = await fetch("/api/v2/agent/deadlines", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: $("impText").value }),
+      });
+    }
+    const data = await resp.json();
+    if (data.errorCode) throw new Error(data.message || data.errorCode);
+
+    $("importModal").classList.remove("open");
+    if (importKind === "schedule") {
+      $("tip").textContent = "已导入 " + data.saved + " 门课程。";
+    } else {
+      $("tip").textContent = "已导入 " + data.saved + " 条 DDL" +
+        ((data.skipped || []).length ? "（" + data.skipped.length + " 行没识别到日期）" : "") + "。";
+    }
+    renderStudy();
+  } catch (e) {
+    alert("导入失败：" + e.message);
+  } finally {
+    $("impSave").disabled = false;
+    $("impSave").textContent = "导入";
+  }
+}
+
+async function renderStudy() {
+  try {
+    const data = await (await fetch("/api/v2/agent/study")).json();
+    const courses = (data.courses || []).length;
+    const deadlines = data.deadlines || [];
+    if (!courses && !deadlines.length) return;
+    const parts = [];
+    if (courses) parts.push("<b>课程</b> " + courses + " 门");
+    if (deadlines.length) {
+      parts.push("<b>最近截止</b> " + deadlines.slice(0, 3).map((d) =>
+        (d.title || "") + "（" + (d.dueDate || "").slice(5) +
+        (d.daysLeft != null ? "，" + (d.daysLeft >= 0 ? d.daysLeft + " 天后" : "已过期") : "") + "）"
+      ).join("；"));
+    }
+    $("runinfo").innerHTML = "<div class='evi'>" + parts.join("<br>") + "</div>";
+  } catch (e) { /* 概览失败不影响主流程 */ }
+}
+
+$("btnSchedule").onclick = () => openImport("schedule");
+$("btnDeadline").onclick = () => openImport("deadlines");
+$("impClose").onclick = () => $("importModal").classList.remove("open");
+$("impSave").onclick = saveImport;
+
+// ------------------------------------------------------------------ 错题本
+async function openWrongbook() {
+  const list = $("wrongList");
+  list.innerHTML = "<div class='empty'>加载中…</div>";
+  $("wrongModal").classList.add("open");
+  try {
+    const data = await (await fetch("/api/v2/agent/wrongbook")).json();
+    const items = data.items || [];
+    if (!items.length) {
+      list.innerHTML = "<div class='empty'>还没有错题。做完一组练习、答错的题会自动记录。</div>";
+      return;
+    }
+    list.innerHTML = items.map((row, i) =>
+      '<div class="evi" data-i="' + i + '">' +
+      '<div><b>' + (i + 1) + ". " + (row.stem || "") + "</b></div>" +
+      '<div class="src">' + (row.knowledgePointName || row.knowledgePointId || "") +
+      " · 错 " + row.wrongCount + " 次" +
+      (row.myAnswer ? " · 你选了 " + row.myAnswer : "") +
+      (row.answerKey ? " · 正确答案 " + row.answerKey : "") + "</div>" +
+      (row.explanation ? '<div class="src" style="margin-top:4px">解析：' + row.explanation + "</div>" : "") +
+      '<div style="margin-top:6px"><button class="more" data-del="' + row.exerciseId + '">移出错题本</button></div>' +
+      "</div>").join("");
+    list.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.onclick = async () => {
+        await fetch("/api/v2/agent/wrongbook/" + encodeURIComponent(btn.dataset.del),
+                    { method: "DELETE" });
+        openWrongbook();
+      };
+    });
+  } catch (e) {
+    list.innerHTML = "<div class='empty'>加载失败：" + e.message + "</div>";
+  }
+}
+
+$("wrongChip").onclick = openWrongbook;
+$("wrongClose").onclick = () => $("wrongModal").classList.remove("open");
+
+$("profileChip").onclick = showProfileOverview;
+$("scopeChip").onclick = openOnboard;
+if ($("welcomeScope")) $("welcomeScope").onclick = openOnboard;
+document.querySelectorAll(".sug").forEach((el) => {
+  if (el.id === "welcomeScope") return;   // 这个是入口，不是提问
+  el.onclick = () => { $("input").value = el.dataset.q; send(); };
+});
+$("modalClose").onclick = closeModal;
+$("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+
+$("btnSend").onclick = send;
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+$("btnUpload").onclick = () => $("fileInput").click();
+$("fileInput").onchange = upload;
+$("btnPhoto").onclick = () => $("photoInput").click();
+$("photoInput").onchange = analyzePhoto;
+refreshRuntime();
+loadProfile();
+</script>
+</body>
+</html>
+

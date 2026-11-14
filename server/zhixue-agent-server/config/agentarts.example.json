@@ -1,0 +1,35 @@
+{
+  "_readme": [
+    "复制为 agentarts.json 后填写真实 ID。此文件只放资源标识，绝不放密码、AK/SK、Token。",
+    "这些值来自 AgentArts 控制台：智能体/工作流卡片「复制 ID」、我的凭证里的 project_id。",
+    "endpoint 默认按 <project_id>.studio.agentarts.<region>.huaweiapaas.com 拼，特殊情况下再手填。"
+  ],
+  "region": "cn-north-4",
+  "projectId": "",
+  "workspaceId": "default",
+  "endpoint": "",
+  "controller": {
+    "agentId": "",
+    "version": "",
+    "type": "controller",
+    "note": "多智能体应用（type=controller），网关主链路调用它"
+  },
+  "workflows": [
+    { "key": "diagnosis", "name": "学情诊断", "workflowId": "", "version": "" },
+    { "key": "planner", "name": "学习规划", "workflowId": "", "version": "" },
+    { "key": "exercise", "name": "练习辅导", "workflowId": "", "version": "" },
+    { "key": "assessment", "name": "学习评估", "workflowId": "", "version": "" }
+  ],
+  "knowledgeBase": {
+    "kbId": "",
+    "name": "课程资料库",
+    "note": "基础版每个应用最多关联 1 个知识库"
+  },
+  "mcp": {
+    "url": "",
+    "authMode": "apiKey",
+    "toolCount": 0,
+    "note": "公网 HTTPS 地址，平台侧创建 MCP 后工具自动发现"
+  },
+  "updatedAt": ""
+}

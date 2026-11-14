@@ -1,0 +1,71 @@
+﻿AgentArts S2 无依赖自检  ·  C:\Users\86150\Desktop\ICT-by-xzhzyyheb-main\server\zhixue-agent-server
+
+[1/5] 配置三态与缺项判定
+  [OK] 默认未开启时 mode=disabled
+  [OK] disabled 时 ready 为 False
+  [OK] disabled 时给出人话原因
+  [OK] 配置齐全时 mode=cloud 且 ready
+  [OK] endpoint 由 project_id 推导
+  [OK] runtime_url 结构正确
+  [OK] 缺 agent_id 时列出缺项
+  [OK] 配置不全时 ready 为 False
+  [OK] describe 不泄露密码
+  [OK] describe 不泄露主账号名
+  [OK] describe 暴露 hasIamUser 布尔
+
+[2/5] 平台事件 → 内部事件
+  [OK] start → run_started
+  [OK] message → agent_message 且保留增量
+  [OK] plugin_start → tool_started 带工具名
+  [OK] plugin_start 保留入参
+  [OK] plugin_end → tool_finished
+  [OK] statistic_data → metrics 提取耗时
+  [OK] summary_response → run_summary
+  [OK] done → run_finished
+  [OK] 未知事件不丢弃（落 raw）
+  [OK] collect_text 拼接增量
+  [OK] tool_names 去重保序
+
+[3/5] 会话映射与运行记录
+  [OK] conversationId ≤64 字符
+  [OK] conversationId 字符合法
+  [OK] 同一聊天会话复用平台会话
+  [OK] 不同聊天会话相互独立
+  [OK] sessionRef 可用一次随机串换回用户
+  [OK] 伪造 sessionRef 查不到身份
+  [OK] 运行记录初始状态 running
+  [OK] 事件总量被截断到上限
+  [OK] 被截断时有显式标记
+  [OK] 结束后落库状态与工具清单
+  [OK] 回放支持 after 游标
+
+[4/5] IAM Token 缓存
+  [OK] 首次取 Token 成功
+  [OK] 重复调用命中缓存（只请求一次）
+  [OK] 请求的是 IAM 项目级 Token 接口
+  [OK] scope 为 project（平台要求）
+  [OK] 强制刷新会重新请求
+  [OK] snapshot 只报状态不报 Token
+  [OK] IAM 401 会抛错且带状态码
+
+[5/5] 语法检查（不导入，故不依赖第三方库）
+  [OK] 编译通过 server\zhixue-agent-server\app\__init__.py
+  [OK] 编译通过 server\zhixue-agent-server\app\api\chat.py
+  [OK] 编译通过 server\zhixue-agent-server\app\api\agentarts_api.py
+  [OK] 编译通过 server\zhixue-agent-server\run.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\__init__.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\config.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\auth.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\client.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\events.py
+  [OK] 编译通过 server\zhixue-agent-server\app\agentarts\session.py
+  [OK] 编译通过 server\zhixue-agent-server\tests\test_agentarts_client.py
+  [OK] 编译通过 server\zhixue-agent-server\tests\test_agentarts_gateway.py
+  [OK] 编译通过 server\zhixue-agent-server\tests\test_agentarts_degradation.py
+  [OK] 编译通过 tools\check_agentarts.py
+
+================================================================
+  全部通过：54 项检查
+  说明：Flask 路由与 SSE 组装需 Python 3.12 完整依赖，用 pytest 验证：
+        python -m pytest tests/test_agentarts_*.py -q
+

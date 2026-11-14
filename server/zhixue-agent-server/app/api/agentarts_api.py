@@ -305,6 +305,24 @@ MASTERY_RULES = [
 ]
 
 
+_REGISTRY_READY = {"done": False}
+
+
+def _ensure_registry_bootstrapped(registry_module) -> None:
+    """进程内只做一次：题库 → 知识点注册表。
+
+    不做的话，第一次解析时注册表是空的，历史 ID（binary-tree-traversal）
+    会被当成新知识点重建。
+    """
+    if _REGISTRY_READY["done"]:
+        return
+    try:
+        registry_module.bootstrap(_repository)
+        _REGISTRY_READY["done"] = True
+    except Exception:  # noqa: BLE001 - 初始化失败不应阻断请求
+        pass
+
+
 @agentarts_api.get("/api/v2/agent/profile")
 def profile_evidence():
     """学情 + 错题明细，供前端"点开看依据"。
@@ -315,9 +333,15 @@ def profile_evidence():
     profile = _repository.get("profiles", user_id) if _repository else None
     profile = profile if isinstance(profile, dict) else {}
 
+    from app.services import knowledge_registry
+    _ensure_registry_bootstrapped(knowledge_registry)
+
     mastery = [{
         "knowledgePointId": row.get("knowledgePointId"),
-        "knowledgePointName": row.get("knowledgePointName") or row.get("knowledgePointId"),
+        # 展示名以注册表为准：同一个 kpId 在任何页面都应显示同一个名字
+        "knowledgePointName": knowledge_registry.name_of(
+            _repository, str(row.get("knowledgePointId") or ""),
+            str(row.get("knowledgePointName") or row.get("knowledgePointId") or "")),
         "masteryScore": row.get("masteryScore"),
         # source=declared 表示用户自己勾选的、还没测过；assessment/wrong_book 才是真实行为
         "source": row.get("source") or "unknown",
@@ -363,6 +387,10 @@ def set_targets():
         return _error(400, "VALIDATION_ERROR", "knowledgePoints 不能为空")
 
     user_id = current_user_id() or resolve_user_id(None)
+    from app.services import knowledge_registry
+
+    _ensure_registry_bootstrapped(knowledge_registry)
+
     rows = []
     for item in points[:20]:
         if isinstance(item, str):
@@ -372,9 +400,13 @@ def set_targets():
         point_id = str(item.get("knowledgePointId") or "").strip()
         if not point_id:
             continue
+        display = str(item.get("knowledgePointName") or point_id).strip()
+        # 统一走注册表：用户填的名字可能和题库/资料里的说法不同，必须归一到同一个 kpId
+        kp_id = knowledge_registry.ensure(_repository, point_id, name=display,
+                                          source="declared", course=course)
         rows.append({
-            "knowledgePointId": point_id,
-            "knowledgePointName": str(item.get("knowledgePointName") or point_id),
+            "knowledgePointId": kp_id,
+            "knowledgePointName": knowledge_registry.name_of(_repository, kp_id, display),
             "masteryScore": 0,
             "source": "declared",
             "assessed": False,
@@ -397,6 +429,87 @@ def set_targets():
     return jsonify({"ok": True, "profileVersion": profile["profileVersion"],
                     "knowledgePointCount": len(rows),
                     "nextStep": "先做一组短测，掌握度才会有真实值"})
+
+
+@agentarts_api.get("/api/v2/agent/catalog")
+def catalog_list():
+    """课程 + 知识点目录（用户可维护）。"""
+    user_id = current_user_id() or resolve_user_id(None)
+    from app.services import catalog, knowledge_registry
+    _ensure_registry_bootstrapped(knowledge_registry)
+    course = str(request.args.get("course") or "").strip()
+    return jsonify({"courses": catalog.list_courses(_repository, user_id),
+                    "points": catalog.list_points(_repository, user_id, course),
+                    # 未归类条目：题库初始化时没有 course，提示用户归入某门课
+                    "unassigned": catalog.unassigned_points(_repository)})
+
+
+@agentarts_api.post("/api/v2/agent/courses")
+def course_save():
+    body = request.get_json(silent=True) or {}
+    user_id = current_user_id() or resolve_user_id(None)
+    from app.services import catalog
+    try:
+        saved = catalog.save_course(_repository, user_id,
+                                    body.get("courseName"),
+                                    body.get("examDate") or "",
+                                    old_name=str(body.get("oldName") or ""))
+    except ValueError as error:
+        return _error(400, "VALIDATION_ERROR", str(error))
+    return jsonify({"ok": True, "course": saved,
+                    "courses": catalog.list_courses(_repository, user_id)})
+
+
+@agentarts_api.delete("/api/v2/agent/courses/<path:course_name>")
+def course_delete(course_name: str):
+    user_id = current_user_id() or resolve_user_id(None)
+    from app.services import catalog
+    ok = catalog.delete_course(_repository, user_id, course_name)
+    return jsonify({"ok": ok}), (200 if ok else 404)
+
+
+@agentarts_api.post("/api/v2/agent/points")
+def points_add():
+    """批量创建知识点并加入学习范围（一行一个）。已存在的会自动复用。"""
+    body = request.get_json(silent=True) or {}
+    user_id = current_user_id() or resolve_user_id(None)
+    names = body.get("names")
+    if isinstance(names, str):
+        names = [line for line in names.replace(",", "\n").replace("，", "\n").splitlines()]
+    if not isinstance(names, list) or not names:
+        return _error(400, "VALIDATION_ERROR", "names 不能为空")
+    from app.services import catalog, knowledge_registry
+    _ensure_registry_bootstrapped(knowledge_registry)
+    try:
+        result = catalog.upsert_points(_repository, user_id,
+                                       body.get("courseName") or "", names)
+    except ValueError as error:
+        return _error(400, "VALIDATION_ERROR", str(error))
+    return jsonify({"ok": True, **result,
+                    "points": catalog.list_points(_repository, user_id,
+                                                  body.get("courseName") or "")})
+
+
+@agentarts_api.patch("/api/v2/agent/points/<kp_id>")
+def points_rename(kp_id: str):
+    body = request.get_json(silent=True) or {}
+    user_id = current_user_id() or resolve_user_id(None)
+    from app.services import catalog
+    ok = False
+    if body.get("name"):
+        ok = catalog.rename_point(_repository, user_id, kp_id, body.get("name"))
+    if body.get("courseName"):
+        # 把未归类的知识点挂到某门课下
+        ok = catalog.assign_course(_repository, user_id, kp_id, body.get("courseName")) or ok
+    return jsonify({"ok": ok}), (200 if ok else 404)
+
+
+@agentarts_api.delete("/api/v2/agent/points/<kp_id>")
+def points_remove(kp_id: str):
+    user_id = current_user_id() or resolve_user_id(None)
+    from app.services import catalog
+    ok = catalog.remove_point(_repository, user_id, kp_id)
+    return jsonify({"ok": ok}), (200 if ok else 404)
 
 
 @agentarts_api.post("/api/v2/agent/schedule")

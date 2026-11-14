@@ -225,33 +225,32 @@
 
 <div class="modal" id="onboard">
   <div class="box">
-    <h3>先设定你的学习范围</h3>
+    <button class="close" id="obClose">×</button>
+    <h3>课程与知识点</h3>
     <div class="empty" style="margin-bottom:10px">
-      勾选要学的知识点。它们会以"未评估"状态加入学情——做完一组练习后才有真实掌握度。
+      课程可手动创建，也可从课表导入；知识点可批量粘贴或从文件导入。
+      所有条目都能改名或删除——学习范围以你填的为准。
     </div>
-    <div style="margin:8px 0">
-      <b style="font-size:13px">课程</b>
-      <input id="obCourse" type="text" placeholder="例如：数据结构"
-             style="margin-left:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;width:60%" />
+
+    <div class="row" style="border:none;padding:0 0 10px;gap:6px">
+      <input id="obCourse" placeholder="课程名，如 数据结构" />
+      <input id="obExam" placeholder="考试日期 YYYY-MM-DD（可空）" style="width:200px" />
+      <button id="obAddCourse">添加课程</button>
     </div>
-    <div style="margin:10px 0">
-      <b style="font-size:13px">知识点</b>
-      <div class="empty" style="margin:4px 0 6px">每行一个，或用逗号分隔。名字尽量和讲义里的说法一致（例如"二叉树"）。</div>
-      <textarea id="obPointsText" rows="4"
-        placeholder="二叉树&#10;图算法&#10;哈希冲突"
-        style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;
-               font-size:13px;line-height:1.7;resize:vertical"></textarea>
+    <div id="obCourses" class="fold" style="display:block"></div>
+
+    <div style="margin-top:14px">
+      <b style="font-size:13px">知识点（每行一个）</b>
+      <textarea id="obPointsText" rows="4" placeholder="二叉树遍历&#10;图算法&#10;哈希冲突"
+        style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid #e5e7eb;
+               border-radius:8px;font-size:13px;line-height:1.7;resize:vertical"></textarea>
       <div class="sugs" style="margin-top:8px">
-        <button class="sug" data-fill="二叉树, 图算法, 哈希冲突">数据结构常用</button>
-        <button class="sug" data-fill="TCP 三次握手, 拥塞控制">计算机网络常用</button>
+        <button class="sug" id="obAddPoints">加入学习范围</button>
+        <button class="sug" id="obImportFile">从文件导入</button>
+        <input type="file" id="obFile" accept=".txt,.md,.csv" hidden />
       </div>
     </div>
-    <div style="margin:8px 0">
-      <b style="font-size:13px">目标</b>
-      <input id="obGoal" type="text" placeholder="例如：过期末考试"
-             style="margin-left:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px" />
-    </div>
-    <button class="primary" id="obSave" style="margin-top:10px">保存并开始</button>
+    <div id="obPoints" class="fold" style="display:block;margin-top:10px"></div>
   </div>
 </div>
 
@@ -823,49 +822,179 @@ async function attachQuiz(bubble) {
   bubble.appendChild(card);
 }
 
-// ------------------------------------------------------------------ 冷启动
-// 课程与知识点由**用户自己输入**：数据来源是"用户声明"，不是我们预置。
-// 知识点 ID 直接用用户写的名字，这样能和讲义解析出的知识点同名，
-// 出题 / 判分 / 学情才对得上。
-function fillExample(text) {
-  $("obPointsText").value = text.replace(/[,，]\s*/g, "\n");
+// ------------------------------------------------------------------ 课程 / 知识点管理
+// 课程：可创建、可改名、可删除，也能用课表导入（见「课程表」按钮）。
+// 知识点：可批量粘贴、可从文件导入、可改名、可移出学习范围。
+// 数据来源是"用户声明"，不是我们预置——这决定了答辩时怎么讲。
+let catalogState = { courses: [], points: [], unassigned: [], course: "" };
+
+async function loadCatalog() {
+  const query = catalogState.course ? "?course=" + encodeURIComponent(catalogState.course) : "";
+  const data = await (await fetch("/api/v2/agent/catalog" + query)).json();
+  catalogState.courses = data.courses || [];
+  catalogState.points = data.points || [];
+  catalogState.unassigned = data.unassigned || [];
+  renderCourses();
+  renderPoints();
 }
 
-function parsePoints(text) {
-  return String(text || "")
-    .split(/[\n,，;；]+/)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .slice(0, 20)
-    .map((name) => ({ knowledgePointId: name, knowledgePointName: name }));
+function renderCourses() {
+  const box = $("obCourses");
+  if (!catalogState.courses.length) {
+    box.innerHTML = "<div class='empty'>还没有课程。填一个课程名后点「添加课程」。</div>";
+    return;
+  }
+  box.innerHTML = catalogState.courses.map((course) =>
+    '<div class="evi" style="display:flex;align-items:center;gap:8px">' +
+    '<b style="flex:1;cursor:pointer" data-pick="' + course.courseName + '">' +
+    course.courseName + (course.courseName === catalogState.course ? " ✓" : "") + "</b>" +
+    '<span class="src">' + (course.examDate || "未填考试日") + " · " + course.pointCount + " 个知识点</span>" +
+    '<button class="more" data-rename-course="' + course.courseName + '">改名</button>' +
+    '<button class="more" data-del-course="' + course.courseName + '">删除</button>' +
+    "</div>").join("");
+
+  box.querySelectorAll("[data-pick]").forEach((el) => {
+    el.onclick = () => { catalogState.course = el.dataset.pick; loadCatalog(); };
+  });
+  box.querySelectorAll("[data-rename-course]").forEach((el) => {
+    el.onclick = async () => {
+      const oldName = el.dataset.renameCourse;
+      const name = prompt("新的课程名：", oldName);
+      if (!name || name === oldName) return;
+      await fetch("/api/v2/agent/courses", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseName: name, oldName }),
+      });
+      if (catalogState.course === oldName) catalogState.course = name;
+      loadCatalog();
+    };
+  });
+  box.querySelectorAll("[data-del-course]").forEach((el) => {
+    el.onclick = async () => {
+      if (!confirm("删除课程「" + el.dataset.delCourse + "」？知识点会保留在注册表里。")) return;
+      await fetch("/api/v2/agent/courses/" + encodeURIComponent(el.dataset.delCourse),
+                  { method: "DELETE" });
+      if (catalogState.course === el.dataset.delCourse) catalogState.course = "";
+      loadCatalog();
+    };
+  });
 }
 
-async function saveOnboard() {
-  const picked = parsePoints($("obPointsText").value);
-  if (!picked.length) { alert("请至少填一个知识点"); return; }
-  const resp = await fetch("/api/v2/agent/targets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ courseName: $("obCourse").value.trim(),
-                           goal: $("obGoal").value.trim(),
-                           knowledgePoints: picked }),
+function renderPoints() {
+  const box = $("obPoints");
+  const parts = [];
+
+  if (catalogState.unassigned.length) {
+    parts.push('<div class="evi"><b>未归类（' + catalogState.unassigned.length +
+      ' 条）</b><div class="src">这些来自题库，还没挂到课程下。选一门课程后可一键归入。</div></div>');
+    catalogState.unassigned.slice(0, 10).forEach((point) => {
+      parts.push('<div class="evi" style="display:flex;align-items:center;gap:8px">' +
+        "<b style='flex:1'>" + point.name + "</b>" +
+        '<span class="src">未归类</span>' +
+        (catalogState.course
+          ? '<button class="more" data-assign="' + point.kpId + '">归入「' +
+            catalogState.course + "」</button>"
+          : '<span class="src">先选课程</span>') +
+        "</div>");
+    });
+  }
+
+  if (!catalogState.points.length && !catalogState.unassigned.length) {
+    parts.push("<div class='empty'>这个课程下还没有知识点。上面填几行后点「加入学习范围」。</div>");
+  }
+
+  catalogState.points.forEach((point) => {
+    parts.push('<div class="evi" style="display:flex;align-items:center;gap:8px">' +
+      "<b style='flex:1'>" + point.name + "</b>" +
+      '<span class="src">' + (point.inScope
+        ? ("在范围内 · " + (point.assessed ? "已评估 " + Math.round(point.masteryScore) : "未评估"))
+        : "未加入") + " · " + (point.source || "declared") + "</span>" +
+      '<button class="more" data-rename-point="' + point.kpId + '">改名</button>' +
+      (point.inScope ? '<button class="more" data-del-point="' + point.kpId + '">移出</button>' : "") +
+      "</div>");
+  });
+
+  box.innerHTML = parts.join("");
+
+  box.querySelectorAll("[data-assign]").forEach((el) => {
+    el.onclick = async () => {
+      await fetch("/api/v2/agent/points/" + encodeURIComponent(el.dataset.assign), {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseName: catalogState.course }),
+      });
+      loadCatalog();
+    };
+  });
+  box.querySelectorAll("[data-rename-point]").forEach((el) => {
+    el.onclick = async () => {
+      const name = prompt("新的知识点名：");
+      if (!name) return;
+      await fetch("/api/v2/agent/points/" + encodeURIComponent(el.dataset.renamePoint), {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      loadCatalog(); loadProfile();
+    };
+  });
+  box.querySelectorAll("[data-del-point]").forEach((el) => {
+    el.onclick = async () => {
+      await fetch("/api/v2/agent/points/" + encodeURIComponent(el.dataset.delPoint),
+                  { method: "DELETE" });
+      loadCatalog(); loadProfile();
+    };
+  });
+}
+
+async function addCourse() {
+  const name = $("obCourse").value.trim();
+  if (!name) { alert("请填课程名"); return; }
+  const resp = await fetch("/api/v2/agent/courses", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ courseName: name, examDate: $("obExam").value.trim() }),
   });
   const data = await resp.json();
-  if (data.errorCode) { alert("保存失败：" + (data.message || data.errorCode)); return; }
-  $("onboard").classList.remove("open");
-  $("tip").textContent = "已添加 " + picked.length + " 个知识点（未评估）。做一组练习后掌握度才会更新。";
-  loadProfile();
+  if (data.errorCode) { alert(data.message || data.errorCode); return; }
+  catalogState.course = name;
+  $("obCourse").value = ""; $("obExam").value = "";
+  await loadCatalog();
+}
+
+async function addPoints() {
+  const names = $("obPointsText").value.split(/[\n,，;；]+/).map((s) => s.trim()).filter(Boolean);
+  if (!names.length) { alert("请至少填一个知识点"); return; }
+  if (!catalogState.course) {
+    // 知识点必须挂在课程下：没选课程就先把课程名填上并按「添加课程」
+    alert("请先在左下课程列表里选中一门课程（或先添加课程）");
+    return;
+  }
+  const resp = await fetch("/api/v2/agent/points", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ courseName: catalogState.course, names }),
+  });
+  const data = await resp.json();
+  if (data.errorCode) { alert(data.message || data.errorCode); return; }
+  $("obPointsText").value = "";
+  $("tip").textContent = "已加入 " + data.added.length + " 个知识点（未评估）；" +
+    (data.created.length ? "新建 " + data.created.length + " 个。" : "复用了已有条目。");
+  await loadCatalog(); loadProfile();
 }
 
 function openOnboard() {
   $("onboard").classList.add("open");
-  $("obPointsText").focus();
+  loadCatalog().catch(() => {});
 }
 
-document.querySelectorAll("[data-fill]").forEach((el) => {
-  el.onclick = () => fillExample(el.dataset.fill);
-});
-$("obSave").onclick = saveOnboard;
+$("obAddCourse").onclick = addCourse;
+$("obAddPoints").onclick = addPoints;
+$("obImportFile").onclick = () => $("obFile").click();
+$("obFile").onchange = async () => {
+  const file = $("obFile").files[0];
+  if (!file) return;
+  const text = await file.text();
+  $("obPointsText").value = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).join("\n");
+  $("obFile").value = "";
+};
+$("obClose").onclick = () => $("onboard").classList.remove("open");
 
 // ------------------------------------------------------------------ 课表 / DDL 导入
 let importKind = "schedule";
@@ -938,10 +1067,17 @@ async function renderStudy() {
     const parts = [];
     if (courses) parts.push("<b>课程</b> " + courses + " 门");
     if (deadlines.length) {
-      parts.push("<b>最近截止</b> " + deadlines.slice(0, 3).map((d) =>
-        (d.title || "") + "（" + (d.dueDate || "").slice(5) +
-        (d.daysLeft != null ? "，" + (d.daysLeft >= 0 ? d.daysLeft + " 天后" : "已过期") : "") + "）"
-      ).join("；"));
+      const urgent = deadlines.filter((d) => d.daysLeft != null && d.daysLeft <= 3);
+      parts.push("<b>最近截止</b> " + deadlines.slice(0, 3).map((d) => {
+        const days = d.daysLeft;
+        const label = days == null ? "" : (days < 0 ? "已过期" : days + " 天后");
+        const warn = (days != null && days <= 3) ? " <span style='color:#dc2626'>⚠</span>" : "";
+        return (d.title || "") + "（" + (d.dueDate || "").slice(5) + "，" + label + "）" + warn;
+      }).join("；"));
+      if (urgent.length) {
+        parts.push("<span style='color:#dc2626'><b>优先处理</b> " + urgent.length +
+                   " 项 3 天内截止</span>");
+      }
     }
     $("runinfo").innerHTML = "<div class='evi'>" + parts.join("<br>") + "</div>";
   } catch (e) { /* 概览失败不影响主流程 */ }
@@ -1007,6 +1143,7 @@ $("btnPhoto").onclick = () => $("photoInput").click();
 $("photoInput").onchange = analyzePhoto;
 refreshRuntime();
 loadProfile();
+renderStudy();
 </script>
 </body>
 </html>

@@ -24,6 +24,26 @@ from ..registry import parse_json_arg
 SESSION_REF = {"type": "string", "description": "网关签发的一次性会话引用，用于换取真实 userId"}
 
 
+def _registry():
+    """知识点注册表（懒加载：缺依赖时不影响其它工具）。"""
+    from app.services import knowledge_registry
+    return knowledge_registry
+
+
+def _kp_id(repository, raw: str, name: str = "", source: str = "declared") -> str:
+    """把任意说法换成 kpId —— **所有写掌握度的入口都必须经过它**。
+
+    以前直接把用户/资料给的名字当 ID，导致同一知识点在画像里出现两条。
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        return _registry().ensure(repository, text, name=name, source=source)
+    except Exception:  # noqa: BLE001 - 注册表异常时退回原值，不让写操作整体失败
+        return text
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -75,10 +95,18 @@ def _material_points(repository, user_id: str, kb_id: str) -> list:
 
 
 def _name_to_point_id(repository, user_id: str, name: str) -> str:
-    """把资料里的知识点名对回系统内的 ID（画像/错题本里用 ID）。
+    """把资料里的知识点名对回 kpId。
 
-    对不上就用名字本身当 ID：宁可编号不统一，也不能因为命名不一致就拒绝出题。
+    先问注册表（它有别名，能把"二叉树遍历基础"对到题库 ID），
+    再退回画像/错题本里的同名记录，最后才用名字本身。
     """
+    try:
+        resolved = _registry().resolve(repository, name)
+    except Exception:  # noqa: BLE001 - 注册表异常时退回旧逻辑
+        resolved = None
+    if resolved:
+        return resolved
+
     for row in ((repository.get("profiles", user_id) or {}).get("mastery") or []):
         if not isinstance(row, dict):
             continue
@@ -88,7 +116,12 @@ def _name_to_point_id(repository, user_id: str, name: str) -> str:
         if isinstance(row, dict) and row.get("userId") == user_id \
                 and str(row.get("knowledgePointName") or "") == name:
             return str(row.get("knowledgePointId") or name)
-    return name
+
+    # 都没命中：以"资料抽取"的身份登记，保证后续判分/错题能落到同一条
+    try:
+        return _registry().ensure(repository, name, name=name, source="extracted")
+    except Exception:  # noqa: BLE001
+        return name
 
 
 def _topic_matches(name: str, topic: str) -> bool:
@@ -107,15 +140,9 @@ def _topic_matches(name: str, topic: str) -> bool:
 
 
 def _resolve_point(repository, module, user_id: str, kb_id: str, topic: str):
-    """决定"出哪个知识点的题"。返回 (point, source, candidates)。
+    """决定"出哪个知识点的题"。返回 (kpId, source, candidates, display_name)。
 
-    顺序（全部以"资料里真的有依据"为前提）：
-    1. 调用方指定了 `knowledgePointId` → 直接用；
-    2. 资料里抽出的知识点中，名字出现在 `topic`（用户原话）里的 → 用它；
-    3. 否则取资料里的第一个知识点（**由资料决定，而不是由用户短板决定**）。
-
-    一个都取不到就返回空 + candidates，让上层去问用户"这份资料要练哪个"，
-    而不是拿一个资料里没有的知识点硬出题。
+    检索用**显示名**（资料是按文字匹配的），落库用 **kpId**（保证链路一致）。
     """
     candidates = _material_points(repository, user_id, kb_id)
 
@@ -126,21 +153,22 @@ def _resolve_point(repository, module, user_id: str, kb_id: str, topic: str):
             # 用户点名了主题（如"出两道 TCP 的题"）但资料里没有对应知识点：
             # 直接说"没有"，并把资料里实际有的候选带出去，让上层问一句
             # "要不要改出二叉树的题"。悄悄换成别的知识点是答非所问。
-            return "", "topic_not_in_materials", candidates
+            return "", "topic_not_in_materials", candidates, ""
     ordered += [name for name in candidates if name not in ordered]
 
     for name in ordered:
-        point = _name_to_point_id(repository, user_id, name)
+        # 检索按名字（章节/正文里出现的就是它）
         try:
-            sources, source_error = module.retrieve(repository, user_id, point, kb_id)
+            sources, source_error = module.retrieve(repository, user_id, name, kb_id)
         except Exception:  # noqa: BLE001 - 单个候选失败不应中断
             continue
         if not source_error and sources:
+            kp_id = _name_to_point_id(repository, user_id, name)
             source = "auto_from_topic" if (topic and name.casefold() in topic.casefold()) \
                 else "auto_from_material"
-            return point, source, candidates
+            return kp_id, source, candidates, name
 
-    return "", "none", candidates
+    return "", "none", candidates, ""
 
 
 def _first_kb_id(repository, user_id: str) -> str:
@@ -269,6 +297,9 @@ def update_mastery(arguments: dict, ctx) -> dict:
         if not point_id:
             return envelope.fail(envelope.VALIDATION_ERROR,
                                  "updates 每项都必须含 knowledgePointId")
+        raw_name = str(item.get("knowledgePointName") or "").strip()
+        # 关键：先换成注册表里的 kpId，避免同一知识点被写成两条掌握度
+        point_id = _kp_id(ctx.repository, point_id, raw_name, source="declared") or point_id
         try:
             score = float(item.get("assessmentScore"))
         except (TypeError, ValueError):
@@ -282,13 +313,16 @@ def update_mastery(arguments: dict, ctx) -> dict:
                                  details={"knowledgePointId": point_id})
 
         row = index.get(point_id)
+        display_name = raw_name or _registry().name_of(ctx.repository, point_id, point_id)
         if row is None:
-            row = {"knowledgePointId": point_id, "masteryScore": new_score,
+            row = {"knowledgePointId": point_id, "knowledgePointName": display_name,
+                   "masteryScore": new_score,
                    "source": "assessment", "assessed": True, "attempts": 1}
             rows.append(row)
             index[point_id] = row
         else:
             row["masteryScore"] = new_score
+            row["knowledgePointName"] = row.get("knowledgePointName") or display_name
             row["source"] = "assessment"
             # 用户自己勾选的知识点初始 assessed=false（含义是"还没测过"）；
             # 第一次判分后才有资格谈"薄弱"。
@@ -405,11 +439,19 @@ def create_grounded_exercise(arguments: dict, ctx) -> dict:
     if point.casefold() in {"auto", "auto-detect", "auto_from_material", "自动", "自动选择"}:
         point = ""
     point_source = "explicit"
+    point_name = ""
+    if point:
+        # 显式指定也要过注册表：判分/错题才落回同一条掌握度
+        try:
+            point_name = _registry().name_of(ctx.repository, point, point)
+        except Exception:  # noqa: BLE001
+            point_name = point
+        point = _kp_id(ctx.repository, point, point_name, source="declared") or point
     if not point:
         # 用户常说"根据这份资料出两道题"而不指定知识点。
         # 这时考什么应由**资料**决定，而不是由"谁最弱"决定：
         # 资料里抽出的知识点优先，其次看用户原话里提到了哪个。
-        point, point_source, candidates = _resolve_point(
+        point, point_source, candidates, point_name = _resolve_point(
             ctx.repository, module, user_id, kb_id, topic)
         if not point:
             if point_source == "topic_not_in_materials":
@@ -425,8 +467,11 @@ def create_grounded_exercise(arguments: dict, ctx) -> dict:
                                  details={"reason": reason,
                                           "candidates": candidates[:10]})
 
+    # 检索按"名字"匹配（资料里出现的是文字）；没有显示名时退回 kpId
+    retrieval_term = point_name or point
+
     try:
-        sources, source_error = module.retrieve(ctx.repository, user_id, point, kb_id)
+        sources, source_error = module.retrieve(ctx.repository, user_id, retrieval_term, kb_id)
     except ModuleNotFoundError as missing:
         # 出题链路里的题库读取会顺带导入 app.api（依赖 Flask）。
         # 与其抛 INTERNAL_ERROR，不如明确告诉运维该装什么。
@@ -545,6 +590,9 @@ def record_wrong_question(arguments: dict, ctx) -> dict:
                              "缺少题干（stem），至少要能看出是哪道题")
 
     point_name = str(arguments.get("knowledgePointName") or "").strip() or point_id
+    # 统一走注册表：错题本与画像必须用同一个 kpId，否则提示里会出现两条同名知识点
+    point_id = _kp_id(ctx.repository, point_id, point_name, source="declared") or point_id
+    point_name = _registry().name_of(ctx.repository, point_id, point_name)
     reason = str(arguments.get("reason") or "").strip()
     source_type = str(arguments.get("sourceType") or "").strip() or "photo"
 
